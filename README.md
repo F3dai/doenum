@@ -33,6 +33,6 @@ The directory structure:
 ├── nmap
 │   └── nmap.out
 └── wfuzz
-    └── wfuzz.out</pre>
+    └── wfuzz.out:80</pre>
 
 

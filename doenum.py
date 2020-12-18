@@ -16,7 +16,7 @@ wfuzzList = "/usr/share/wordlists/wfuzz/general/big.txt" # Confirm this is true
 wfuzzPorts = "404,403,301"
 
 # Count Down #
-countSeconds = 1 # Set to 0 for none
+countSeconds = 5 # Set to 0 for none
 
 # Parse Arguments #
 
@@ -60,10 +60,14 @@ def echoHost():
 			with open(".hosts","r") as hostBackup:
 				hostBackupLines = hostBackup.read()
 			# Replace current hosts
-			with open(hostFilePath, "w+") as hostFile:
-				for line in hostBackupLines:
-					hostFile.write(line)
-				print("\t[+] Reset " + hostFilePath)
+			try:
+				with open(hostFilePath, "w+") as hostFile:
+					for line in hostBackupLines:
+						hostFile.write(line)
+					print("\t[+] Reset " + hostFilePath)
+			except:
+				print("[-] Exiting... Run as root")
+				exit()
 		else:
 			print("[!] Ok, adding it in anyway. Beware of conflicts.")
 	with open(hostFilePath,"a+") as hostFile:
