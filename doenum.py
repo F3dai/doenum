@@ -9,11 +9,17 @@ import shutil
 import pprint
 
 # Working Directories #
-nmapDirectory = "/nmap/"
+nmapDirectory = '/nmap/'
 wfuzzDirectory = '/wfuzz/'
+
 # Wfuzz Wordlist #
 wfuzzList = "/usr/share/wordlists/wfuzz/general/big.txt" # Confirm this is true
-wfuzzPorts = "404,403,301"
+wfuzzIgnore = "404,403,301"
+
+# Port ranges #
+httpTopPort = 8999
+httpLowPort = 8000
+httpStandardPorts = (80, 443)
 
 # Count Down #
 countSeconds = 5 # Set to 0 for none
@@ -22,39 +28,46 @@ countSeconds = 5 # Set to 0 for none
 
 def parseArgs():
 	global targetIP, targetDirectory, targetName, user
+
 	parser = argparse.ArgumentParser(description='Enumerate a host.')
-	parser.add_argument('-i', '--ip', required=True,
-		help='IP address of the host you want to enumerate')
-	parser.add_argument('-d', '--directory', required=True,
-		help='Specify the parent directory. "-d tryhackme" will enter ~/tryhackme/ and create a directory structure there.')
-	parser.add_argument('-n', '--name', required=True,
-		help='The name of the host. This will be the child directory created and will be added to /etc/hosts')
+
+	parser.add_argument('-t', '--target', required=True, help='IP address of the host you want to enumerate')
+	parser.add_argument('-d', '--directory', required=True, help='Specify the parent directory. "-d tryhackme" will enter ~/tryhackme/ and create a directory structure there.')
+	parser.add_argument('-n', '--name', required=True, help='The name of the host. This will be the child directory created and will be added to /etc/hosts')
+	parser.add_argument('-u', '--user', required=False,	help='Set your current user for setting permissions. If not set, it will take the user from the absolute path (/home/user/..). User will be root if script is confused.')
 	args = parser.parse_args()
 
-	targetIP = args.ip
-	targetDirectory = args.directory
+	targetIP = args.target
+	targetDirectory = args.directory + "/"
 	targetName = args.name
 
 	# Grab home directory as user
-	# Script runs as root - assume the user given their parent directory?s
+	# Script runs as root - assume the user given their parent directory?
 
-	user = targetDirectory.split('/')
-	if user[1] == "root":
-		user = "root"
+	if not args.user:
+		user = targetDirectory.split('/')
+		if user[1] == "root":
+			user = "root"
+		else:
+			user = user[2]
 	else:
-		user = user[2]
+		user = args.user
 
 # Count down
 
 def countdown():
-	subprocess.call(['termdown', str(countSeconds)])
+	try:
+		subprocess.call(['termdown', str(countSeconds)])
+	except:
+		print("\t[!] Termdown not installed. Install with 'pip install termdown'")
 
 # Edit /etc/hosts #
 
 def echoHost():
 	hostFilePath = "/etc/hosts"
-	# Checks if IP in hosts
-	if targetIP or targetName in open("/etc/hosts").read():
+	hostsFileRead = open(hostFilePath).read()
+	# Checks if IP in system's hosts file
+	if targetIP in hostsFileRead or targetName in hostsFileRead:
 		if input("[!] Entry exists in hosts, reset file? (y/n) ") == "y":
 			# Read original hosts
 			with open(".hosts","r") as hostBackup:
@@ -89,7 +102,7 @@ def createStructure():
 			shutil.rmtree(workDirectory)
 			print("\t[+] Deleted " + workDirectory)
 		else:
-			print("you're gay!")
+			print("k")
 			exit()
 	os.mkdir(workDirectory)
 	print("\t[+] Created parent directory: " + workDirectory)
@@ -103,7 +116,7 @@ def createStructure():
 def portscan(ip):
 	# Initialise variables
 	nmapOut = targetDirectory + targetName + nmapDirectory + "nmap.out"
-	ports = [] 
+	ports = []
 	nmap = nmap3.NmapScanTechniques()
 
 	print("\n## Starting nmap scan ##\n")
@@ -121,15 +134,24 @@ def portscan(ip):
 				ports.append(port['portid'])
 			except:
 				pass
-	return ports
+		return ports
 
 # web scan #
 
-def wfuzz(ports):
+def wfuzz(port):
+	print("\n[!] Starting Wfuzz scan...\n")
 	wfuzzOut = workDirectory + wfuzzDirectory + "wfuzz.out"
+	subprocess.call(["wfuzz", "-w", wfuzzList, "--hc", wfuzzIgnore, "-u", targetIP + ":" + port + "/FUZZ", "-c", "-f", wfuzzOut + "-" + port])
+	print("\t[+] Web directory scannining done for port " + port)
+
+# Scan HTTP #
+
+def checkRange(ports):
+	toScan = [] # Init empty array for ports in http range
 	for port in ports:
-		subprocess.call(["wfuzz", "-w", wfuzzList, "--hc", wfuzzPorts, "-u", targetIP + "/FUZZ:" + port, "-c", "-f", wfuzzOut + "-" + port])
-		print("\t[+] Web directory scannining done for port " + port)
+		# Check if standard http or in 8k range.
+		if httpLowPort <= int(port) <= httpTopPort or int(port) in (httpStandardPorts):
+			wfuzz(port)
 
 # Change File Ownership #
 
@@ -137,13 +159,12 @@ def setPermissions():
 	subprocess.call(['chown', '-R' , user + ':' + user, workDirectory])
 	print("\t[+] Set file structure ownership to '{}'".format(user))
 
-# start #
 
-if __name__ == '__main__':
+def main():
 
 	args = parseArgs() # Accept params
 
-	countdown()
+	countdown() # termdown visual timer
 
 	echoHost() # Add name.host to /etc/hosts
 
@@ -151,13 +172,20 @@ if __name__ == '__main__':
 
 	ports = portscan(targetIP) # Port Scan returns list of open ports
 
-	if "80" in ports:
-		if input("\n[!] Common web ports found. Perform web directory scan? (y/n) ") == "y":
-			print()
-			wfuzz(["80", "8080"]) # Web Directory Scan
-	#if "443" in ports:
-	#	enum4linux()
+	checkRange(ports) # Check for common http ports
 
-	setPermissions()
+	# To do:
+	# - Run nikto if http open too...
+	# - Check windows ports? enum4ilnux...
+	# - Ensure dir perms with exception handling. i.e ctrl+c -> set perms
+	# - Copy hosts file before running instead of replacing with .hosts?
+
+	setPermissions() # permz innit
 
 	print("\n## Done ##")
+
+# start #
+
+if __name__ == '__main__':
+
+	main()
